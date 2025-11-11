@@ -1,0 +1,55 @@
+[project]
+name = "ec2-spot"
+version = "0"
+requires-python = ">=3.14"
+
+[tool.basedpyright]
+reportAny = false
+reportExplicitAny = false
+reportPrivateUsage = false
+reportUnannotatedClassAttribute = false
+reportUnusedCallResult = false
+reportUnusedParameter = false
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "ANN401",  # any-type
+  "C90",  # mccabe
+  "COM",  # flake8-commas
+  "D",  # pydocstyle
+  "E501",  # line-too-long
+  "ERA",  # eradicate
+  "FIX",  # flake8-fixme
+  "N806",  # non-lowercase-variable-in-function
+  "PLR0911",  # too-many-return-statements
+  "PLR0912",  # too-many-branches
+  "PLR0915",  # too-many-statements
+  "PLR2004",  # magic-value-comparison
+  "RUF200",  # invalid-pyproject-toml
+  "S101",  # assert
+  "S311",  # suspicious-non-cryptographic-random-usage
+  "SLF",  # flake8-self
+  "T20",  # flake8-print
+  "TD002",  # missing-todo-author
+  "TD003",  # missing-todo-link
+  "TD004",  # missing-todo-colon
+  "TD005",  # missing-todo-description
+  "TRY003",  # raise-vanilla-args
+  "TRY400",  # error-instead-of-exception
+]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false  # https://github.com/astral-sh/ruff/issues/9006
+
+[tool.tombi.format.rules]
+line-width = 120
+
+[tool.uv]
+exclude-newer = "1 week"
