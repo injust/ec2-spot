@@ -2,6 +2,18 @@
 name = "ec2-spot"
 version = "0"
 requires-python = ">=3.14"
+dependencies = [
+  "aiobotocore~=3.6",
+  "anyio~=4.13",
+  "attrs~=26.1",
+  "rich~=15.0",
+  "uvloop~=0.22",
+]
+
+[dependency-groups]
+dev = [
+  "types-aiobotocore[ec2]~=3.6",
+]
 
 [tool.basedpyright]
 reportAny = false
