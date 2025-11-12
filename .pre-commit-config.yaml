@@ -19,4 +19,4 @@ repos:
     hooks:
       - id: mypy
         args: [--disable-error-code=import-untyped]
-        additional_dependencies: [orjson]
+        additional_dependencies: [anyio, attrs, rich, 'types-aiobotocore[ec2]']
