@@ -1,0 +1,5 @@
+aiobotocore~=2.26
+anyio~=4.12
+attrs~=25.4
+rich~=14.3
+uvloop~=0.22

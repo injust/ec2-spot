@@ -1,0 +1,2 @@
+-r requirements.txt
+types-aiobotocore[ec2]~=2.26
