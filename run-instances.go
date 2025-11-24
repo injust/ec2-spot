@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 )
 
 var (
@@ -28,6 +30,18 @@ func InfiniteRetryer() aws.Retryer {
 			return *interval, nil
 		})
 		o.RateLimiter = ratelimit.None
+		o.Retryables = append(o.Retryables, retry.IsErrorRetryableFunc(
+			func(err error) aws.Ternary {
+				var apiErr smithy.APIError
+				if errors.As(err, &apiErr) {
+					switch apiErr.ErrorCode() {
+					case "MaxSpotInstanceCountExceeded", "SpotMaxPriceTooLow":
+						return aws.TrueTernary
+					}
+				}
+				return aws.UnknownTernary
+			},
+		))
 	})
 	// NOTE(https://github.com/aws/aws-sdk-go-v2/issues/3193): Using functional option (`o.MaxAttempts = 0`) sets MaxAttempts to the default
 	return retry.AddWithMaxAttempts(retryer, 0)
