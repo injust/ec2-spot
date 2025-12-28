@@ -37,10 +37,10 @@ class InstanceFamily(StrEnum):
     G6E = auto()
 
 
-@frozen
+@frozen(order=True)
 class Pricing:
-    instance_type: InstanceTypeType
     zone_id: str
+    instance_type: InstanceTypeType
     spot_price: float = field(converter=float)
 
     @classmethod
@@ -83,6 +83,7 @@ async def query_region(region: str, output: MemoryObjectSendStream[Pricing]) -> 
 async def main() -> None:
     REGIONS = await aws.get_available_regions("ec2")
 
+    results: list[Pricing] = []
     send_stream, receive_stream = create_memory_object_stream[Pricing]()
     async with create_task_group() as tg, receive_stream:
         for region in REGIONS:
@@ -98,7 +99,11 @@ async def main() -> None:
                     pass
 
             if pricing.spot_price <= max_price:
-                print(pricing)
+                results.append(pricing)
+
+    results.sort()
+    for pricing in results:
+        print(pricing)
 
 
 if __name__ == "__main__":
