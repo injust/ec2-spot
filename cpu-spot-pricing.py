@@ -30,10 +30,10 @@ INSTANCE_TYPES: list[InstanceTypeType] = ["c8g.48xlarge", "c8g.metal-48xl"]
 MAX_PRICE = 1.2
 
 
-@frozen
+@frozen(order=True)
 class Pricing:
-    instance_type: InstanceTypeType
     zone_id: str
+    instance_type: InstanceTypeType
     spot_price: float = field(converter=float)
 
     @classmethod
@@ -60,9 +60,11 @@ async def main() -> None:
             tg.start_soon(query_region, region, send_stream.clone())
         await send_stream.aclose()
 
-        async for pricing in receive_stream:
-            if pricing.spot_price <= MAX_PRICE:
-                print(pricing)
+        results = [pricing async for pricing in receive_stream if pricing.spot_price <= MAX_PRICE]
+
+    results.sort()  # pyright: ignore[reportPossiblyUnboundVariable]
+    for pricing in results:  # pyright: ignore[reportPossiblyUnboundVariable]
+        print(pricing)
 
 
 if __name__ == "__main__":
