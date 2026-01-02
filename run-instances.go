@@ -24,7 +24,7 @@ var (
 	launchTemplate = flag.String("launch-template", "", "Launch template name")
 )
 
-func InfiniteRetryer() aws.Retryer {
+func Retryer() aws.Retryer {
 	backoff := retry.BackoffDelayerFunc(func(attempt int, err error) (time.Duration, error) {
 		return *interval, nil
 	})
@@ -39,13 +39,12 @@ func InfiniteRetryer() aws.Retryer {
 		return aws.UnknownTernary
 	})
 
-	retryer := retry.NewStandard(func(o *retry.StandardOptions) {
+	return retry.NewStandard(func(o *retry.StandardOptions) {
 		o.Backoff = backoff
+		o.MaxAttempts = 128 // Retry attempts leak memory (https://github.com/aws/aws-sdk-go-v2/issues/3241)
 		o.RateLimiter = ratelimit.None
 		o.Retryables = append(o.Retryables, retryables)
 	})
-	// NOTE(https://github.com/aws/aws-sdk-go-v2/issues/3193): Using functional option (`o.MaxAttempts = 0`) sets MaxAttempts to the default
-	return retry.AddWithMaxAttempts(retryer, 0)
 }
 
 func RunInstances(ctx context.Context, client *ec2.Client, launchTemplate string) (*ec2.RunInstancesOutput, error) {
@@ -67,7 +66,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRetryer(InfiniteRetryer))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRetryer(Retryer))
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
@@ -76,7 +75,10 @@ func main() {
 	for {
 		resp, err := RunInstances(ctx, client, *launchTemplate)
 		if err != nil {
-			log.Printf("Launch failed: %v", err)
+			var maxAttemptsErr *retry.MaxAttemptsError
+			if !errors.As(err, &maxAttemptsErr) {
+				log.Printf("Launch failed: %v", err)
+			}
 		} else {
 			for _, instance := range resp.Instances {
 				log.Printf("Launched %s instance in %s: %s", instance.InstanceType, *instance.Placement.AvailabilityZone, *instance.InstanceId)
