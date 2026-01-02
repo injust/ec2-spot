@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/alexflint/go-arg"
@@ -25,25 +26,25 @@ var args struct {
 }
 
 func Retryer() aws.Retryer {
-	backoff := retry.BackoffDelayerFunc(func(attempt int, err error) (time.Duration, error) {
-		return args.Interval, nil
-	})
-	retryables := retry.IsErrorRetryableFunc(func(err error) aws.Ternary {
-		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) {
-			switch apiErr.ErrorCode() {
-			case "MaxSpotInstanceCountExceeded", "SpotMaxPriceTooLow":
-				return aws.TrueTernary
-			}
-		}
-		return aws.UnknownTernary
-	})
+	retryableErrors := []string{
+		"InsufficientInstanceCapacity",
+		"InternalError",
+		"MaxSpotInstanceCountExceeded",
+		"SpotMaxPriceTooLow",
+	}
 
 	return retry.NewStandard(func(o *retry.StandardOptions) {
-		o.Backoff = backoff
+		o.Backoff = retry.BackoffDelayerFunc(func(attempt int, err error) (time.Duration, error) {
+			return args.Interval, nil
+		})
 		o.MaxAttempts = 128 // Retry attempts leak memory (https://github.com/aws/aws-sdk-go-v2/issues/3241)
 		o.RateLimiter = ratelimit.None
-		o.Retryables = append(o.Retryables, retryables)
+		o.Retryables = []retry.IsErrorRetryable{
+			retry.IsErrorRetryableFunc(func(err error) aws.Ternary {
+				var apiErr smithy.APIError
+				return aws.BoolTernary(errors.As(err, &apiErr) && slices.Contains(retryableErrors, apiErr.ErrorCode()))
+			}),
+		}
 	})
 }
 
