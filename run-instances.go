@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
-	"os"
 	"time"
+
+	"github.com/alexflint/go-arg"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/ratelimit"
@@ -14,19 +15,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go"
-
-	flag "github.com/spf13/pflag"
 )
 
-var (
-	count          = flag.Int32P("count", "n", 1, "Number of instances to launch simultaneously")
-	interval       = flag.Duration("interval", 1*time.Second, "Time between instance launch attempts")
-	launchTemplate = flag.String("launch-template", "", "Launch template name")
-)
+var args struct {
+	LaunchTemplate string        `arg:"positional,required" help:"Launch template name" placeholder:"LAUNCH_TEMPLATE"`
+	Count          int32         `arg:"-n,--" default:"1" help:"number of instances to launch simultaneously"`
+	Interval       time.Duration `arg:"-t,--" default:"1s" help:"time between instance launch attempts"`
+	Region         string        `arg:"--,env:AWS_REGION,required" help:"AWS region"`
+}
 
 func Retryer() aws.Retryer {
 	backoff := retry.BackoffDelayerFunc(func(attempt int, err error) (time.Duration, error) {
-		return *interval, nil
+		return args.Interval, nil
 	})
 	retryables := retry.IsErrorRetryableFunc(func(err error) aws.Ternary {
 		var apiErr smithy.APIError
@@ -47,23 +47,19 @@ func Retryer() aws.Retryer {
 	})
 }
 
-func RunInstances(ctx context.Context, client *ec2.Client, launchTemplate string) (*ec2.RunInstancesOutput, error) {
+func RunInstances(ctx context.Context, client *ec2.Client) (*ec2.RunInstancesOutput, error) {
 	input := &ec2.RunInstancesInput{
 		LaunchTemplate: &types.LaunchTemplateSpecification{
-			LaunchTemplateName: aws.String(launchTemplate),
+			LaunchTemplateName: aws.String(args.LaunchTemplate),
 		},
 		MinCount: aws.Int32(1),
-		MaxCount: count,
+		MaxCount: aws.Int32(args.Count),
 	}
 	return client.RunInstances(ctx, input)
 }
 
 func main() {
-	flag.Parse()
-	if *launchTemplate == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
+	arg.MustParse(&args)
 
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRetryer(Retryer))
@@ -73,7 +69,7 @@ func main() {
 	client := ec2.NewFromConfig(cfg)
 
 	for {
-		resp, err := RunInstances(ctx, client, *launchTemplate)
+		resp, err := RunInstances(ctx, client)
 		if err != nil {
 			var maxAttemptsErr *retry.MaxAttemptsError
 			if !errors.As(err, &maxAttemptsErr) {
@@ -85,6 +81,6 @@ func main() {
 			}
 		}
 
-		time.Sleep(*interval)
+		time.Sleep(args.Interval)
 	}
 }
