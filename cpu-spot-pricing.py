@@ -12,6 +12,8 @@ import anyio
 from aiobotocore.session import get_session
 from anyio import create_memory_object_stream, create_task_group
 from attrs import field, frozen
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 try:
     from rich import get_console
@@ -41,7 +43,9 @@ class Pricing:
         return cls(instance_type=data["InstanceType"], zone_id=data["AvailabilityZoneId"], spot_price=data["SpotPrice"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
-async def query_region(region: str, output: MemoryObjectSendStream[Pricing]) -> None:
+async def query_region(region: str, progress: Progress, output: MemoryObjectSendStream[Pricing]) -> None:
+    task = progress.add_task(region, total=None)
+
     async with aws.create_client("ec2", region) as ec2, output:  # pyright: ignore[reportUnknownMemberType]
         paginator = ec2.get_paginator("describe_spot_price_history")
         async for page in paginator.paginate(
@@ -50,17 +54,23 @@ async def query_region(region: str, output: MemoryObjectSendStream[Pricing]) -> 
             for pricing in map(Pricing.from_dict, page["SpotPriceHistory"]):
                 await output.send(pricing)
 
+        progress.update(task, visible=False, refresh=True)
+
 
 async def main() -> None:
     REGIONS = await aws.get_available_regions("ec2")
 
     send_stream, receive_stream = create_memory_object_stream[Pricing]()
-    async with create_task_group() as tg, receive_stream:
-        for region in REGIONS:
-            tg.start_soon(query_region, region, send_stream.clone())
-        await send_stream.aclose()
 
-        results = [pricing async for pricing in receive_stream if pricing.spot_price <= MAX_PRICE]
+    with Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=Console(stderr=True)
+    ) as progress:
+        async with create_task_group() as tg, receive_stream:
+            for region in REGIONS:
+                tg.start_soon(query_region, region, progress, send_stream.clone())
+            await send_stream.aclose()
+
+            results = [pricing async for pricing in receive_stream if pricing.spot_price <= MAX_PRICE]
 
     results.sort()  # pyright: ignore[reportPossiblyUnboundVariable]
     for pricing in results:  # pyright: ignore[reportPossiblyUnboundVariable]
