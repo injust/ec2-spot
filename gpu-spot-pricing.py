@@ -13,6 +13,7 @@ import anyio
 from aiobotocore.session import get_session
 from anyio import create_memory_object_stream, create_task_group
 from attrs import field, frozen
+from botocore.exceptions import ConnectionError  # noqa: A004
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -70,19 +71,22 @@ class Pricing:
 
 
 async def query_region(region: str, progress: Progress, output: MemoryObjectSendStream[Pricing]) -> None:
-    task = progress.add_task(region, total=None)
+    task = progress.add_task(region)
 
     async with aws.create_client("ec2", region) as ec2, output:  # pyright: ignore[reportUnknownMemberType]
-        paginator = ec2.get_paginator("describe_spot_price_history")
-        async for page in paginator.paginate(
-            StartTime=dt.datetime.now(UTC),
-            ProductDescriptions=["Linux/UNIX"],
-            Filters=[{"Name": "instance-type", "Values": [f"{family}.*" for family in InstanceFamily]}],
-        ):
-            for pricing in map(Pricing.from_dict, page["SpotPriceHistory"]):
-                await output.send(pricing)
-
-        progress.update(task, visible=False, refresh=True)
+        try:
+            paginator = ec2.get_paginator("describe_spot_price_history")
+            async for page in paginator.paginate(
+                StartTime=dt.datetime.now(UTC),
+                ProductDescriptions=["Linux/UNIX"],
+                Filters=[{"Name": "instance-type", "Values": [f"{family}.*" for family in InstanceFamily]}],
+            ):
+                for pricing in map(Pricing.from_dict, page["SpotPriceHistory"]):
+                    await output.send(pricing)
+        except ConnectionError:
+            progress.update(task, completed=100, refresh=True)
+        else:
+            progress.update(task, visible=False, refresh=True)
 
 
 async def main() -> None:
@@ -92,7 +96,9 @@ async def main() -> None:
     send_stream, receive_stream = create_memory_object_stream[Pricing]()
 
     with Progress(
-        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=Console(stderr=True)
+        SpinnerColumn(finished_text="[red]"),
+        TextColumn("[progress.description]{task.description}"),
+        console=Console(stderr=True),
     ) as progress:
         async with create_task_group() as tg, receive_stream:
             for region in REGIONS:
