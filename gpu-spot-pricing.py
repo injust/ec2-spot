@@ -16,13 +16,14 @@ from anyio import create_memory_object_stream, create_task_group
 from attrs import field, frozen
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 try:
     from rich import get_console
 except ModuleNotFoundError:
     pass
 else:
-    print = get_console().out  # noqa: A001
+    print = get_console().print  # noqa: A001
     del get_console
 
 if TYPE_CHECKING:
@@ -117,8 +118,16 @@ async def main() -> None:
                     results.append(pricing)
 
     results.sort()
+    table = Table("Availability zone", "Instance type", "¢/hr", "¢/GPU-hr", "GPUs", highlight=True)
     for pricing in results:
-        print(pricing)
+        table.add_row(
+            pricing.zone_id,
+            pricing.instance_type,
+            f"¢{pricing.spot_price * 100:.2f}",
+            f"¢{pricing.spot_price * 100 / pricing.gpu_count:.2f}",
+            str(pricing.gpu_count),
+        )
+    print(table)
 
 
 if __name__ == "__main__":
