@@ -15,13 +15,14 @@ from attrs import field, frozen
 from botocore.exceptions import ConnectionError  # noqa: A004
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 try:
     from rich import get_console
 except ModuleNotFoundError:
     pass
 else:
-    print = get_console().out  # noqa: A001
+    print = get_console().print  # noqa: A001
     del get_console
 
 if TYPE_CHECKING:
@@ -79,8 +80,10 @@ async def main() -> None:
             results = [pricing async for pricing in receive_stream if pricing.spot_price <= MAX_PRICE]
 
     results.sort()  # pyright: ignore[reportPossiblyUnboundVariable]
+    table = Table("Availability zone", "Instance type", "¢/hr", highlight=True)
     for pricing in results:  # pyright: ignore[reportPossiblyUnboundVariable]
-        print(pricing)
+        table.add_row(pricing.zone_id, pricing.instance_type, f"¢{pricing.spot_price * 100:.2f}")
+    print(table)
 
 
 if __name__ == "__main__":
