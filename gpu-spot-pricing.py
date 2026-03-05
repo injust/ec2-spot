@@ -8,16 +8,18 @@ import datetime as dt
 from datetime import UTC
 from enum import StrEnum, auto
 from itertools import groupby
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
 
 import anyio
 from aiobotocore.session import get_session
 from anyio import create_memory_object_stream, create_task_group
-from attrs import field, frozen
+from attrs import frozen
 from botocore.exceptions import ConnectionError  # noqa: A004
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
+
+from utils import Pricing
 
 try:
     from rich import get_console
@@ -29,8 +31,6 @@ else:
 
 if TYPE_CHECKING:
     from anyio.streams.memory import MemoryObjectSendStream
-    from types_aiobotocore_ec2.literals import InstanceTypeType
-    from types_aiobotocore_ec2.type_defs import SpotPriceTypeDef
 
 G6E_G5_PERF_RATIO = 2.35
 MAX_GPU_HOUR_PRICE = 0.48  # G6e
@@ -42,48 +42,10 @@ class InstanceFamily(StrEnum):
 
 
 @frozen(order=True)
-class Pricing:
-    zone_id: str
-    instance_type: InstanceTypeType
-    spot_price: float = field(converter=float)
-
-    @classmethod
-    def from_dict(cls, data: SpotPriceTypeDef) -> Self:
-        return cls(zone_id=data["AvailabilityZoneId"], instance_type=data["InstanceType"], spot_price=data["SpotPrice"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
-
-    @property
-    def region_id(self) -> str:
-        return self.zone_id.split("-")[0]
-
+class GpuPricing(Pricing):
     @property
     def instance_family(self) -> InstanceFamily:
         return InstanceFamily(self.instance_type.split(".")[0])
-
-    @property
-    def instance_size(self) -> str:
-        return self.instance_type.split(".")[1]
-
-    @property
-    def cpu_count(self) -> int:
-        match self.instance_size:
-            case "xlarge":
-                return 4
-            case "2xlarge":
-                return 8
-            case "4xlarge":
-                return 16
-            case "8xlarge":
-                return 32
-            case "12xlarge":
-                return 48
-            case "16xlarge":
-                return 64
-            case "24xlarge":
-                return 96
-            case "48xlarge":
-                return 192
-            case _:
-                raise ValueError(self.instance_type)
 
     @property
     def gpu_count(self) -> int:
@@ -98,7 +60,7 @@ class Pricing:
                 raise ValueError(self.instance_type)
 
 
-async def query_region(region: str, progress: Progress, output: MemoryObjectSendStream[Pricing]) -> None:
+async def query_region(region: str, progress: Progress, output: MemoryObjectSendStream[GpuPricing]) -> None:
     task = progress.add_task(region)
 
     async with aws.create_client("ec2", region) as ec2, output:  # pyright: ignore[reportUnknownMemberType]
@@ -109,7 +71,7 @@ async def query_region(region: str, progress: Progress, output: MemoryObjectSend
                 ProductDescriptions=["Linux/UNIX"],
                 Filters=[{"Name": "instance-type", "Values": [f"{family}.*" for family in InstanceFamily]}],
             ):
-                for pricing in map(Pricing.from_dict, page["SpotPriceHistory"]):
+                for pricing in map(GpuPricing.from_dict, page["SpotPriceHistory"]):
                     await output.send(pricing)
         except ConnectionError:
             progress.update(task, completed=100, refresh=True)
@@ -120,8 +82,8 @@ async def query_region(region: str, progress: Progress, output: MemoryObjectSend
 async def main() -> None:
     REGIONS = await aws.get_available_regions("ec2")
 
-    results: list[Pricing] = []
-    send_stream, receive_stream = create_memory_object_stream[Pricing]()
+    results: list[GpuPricing] = []
+    send_stream, receive_stream = create_memory_object_stream[GpuPricing]()
 
     with Progress(
         SpinnerColumn(finished_text="[red]"),
