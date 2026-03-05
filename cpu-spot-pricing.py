@@ -44,6 +44,36 @@ class Pricing:
     def from_dict(cls, data: SpotPriceTypeDef) -> Self:
         return cls(zone_id=data["AvailabilityZoneId"], instance_type=data["InstanceType"], spot_price=data["SpotPrice"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
+    @property
+    def instance_size(self) -> str:
+        return self.instance_type.split(".")[1]
+
+    @property
+    def cpu_count(self) -> int:
+        match self.instance_size:
+            case "medium":
+                return 1
+            case "large":
+                return 2
+            case "xlarge":
+                return 4
+            case "2xlarge":
+                return 8
+            case "4xlarge":
+                return 16
+            case "8xlarge":
+                return 32
+            case "12xlarge":
+                return 48
+            case "16xlarge":
+                return 64
+            case "24xlarge" | "metal-24xl":
+                return 96
+            case "48xlarge" | "metal-48xl":
+                return 192
+            case _:
+                raise ValueError(self.instance_type)
+
 
 async def query_region(region: str, progress: Progress, output: MemoryObjectSendStream[Pricing]) -> None:
     task = progress.add_task(region)
@@ -80,9 +110,15 @@ async def main() -> None:
             results = [pricing async for pricing in receive_stream if pricing.spot_price <= MAX_PRICE]
 
     results.sort()  # pyright: ignore[reportPossiblyUnboundVariable]
-    table = Table("Availability zone", "Instance type", "¢/hr", highlight=True)
+    table = Table("Availability zone", "Instance type", "¢/hr", "¢/CPU-hr", "CPUs", highlight=True)
     for pricing in results:  # pyright: ignore[reportPossiblyUnboundVariable]
-        table.add_row(pricing.zone_id, pricing.instance_type, f"¢{pricing.spot_price * 100:.2f}")
+        table.add_row(
+            pricing.zone_id,
+            pricing.instance_type,
+            f"¢{pricing.spot_price * 100:.2f}",
+            f"¢{pricing.spot_price * 100 / pricing.cpu_count:.2f}",
+            str(pricing.cpu_count),
+        )
     print(table)
 
 
