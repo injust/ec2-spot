@@ -7,6 +7,7 @@
 import datetime as dt
 from datetime import UTC
 from enum import StrEnum, auto
+from itertools import groupby
 from typing import TYPE_CHECKING, Self
 
 import anyio
@@ -49,6 +50,10 @@ class Pricing:
     @classmethod
     def from_dict(cls, data: SpotPriceTypeDef) -> Self:
         return cls(zone_id=data["AvailabilityZoneId"], instance_type=data["InstanceType"], spot_price=data["SpotPrice"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
+
+    @property
+    def region_id(self) -> str:
+        return self.zone_id.split("-")[0]
 
     @property
     def instance_family(self) -> InstanceFamily:
@@ -141,15 +146,17 @@ async def main() -> None:
 
     results.sort()
     table = Table("Availability zone", "Instance type", "¢/hr", "¢/GPU-hr", "CPUs", "GPUs", highlight=True)
-    for pricing in results:
-        table.add_row(
-            pricing.zone_id,
-            pricing.instance_type,
-            f"¢{pricing.spot_price * 100:.2f}",
-            f"¢{pricing.spot_price * 100 / pricing.gpu_count:.2f}",
-            str(pricing.cpu_count),
-            str(pricing.gpu_count),
-        )
+    for _, group in groupby(results, lambda pricing: pricing.region_id):
+        for pricing in group:
+            table.add_row(
+                pricing.zone_id,
+                pricing.instance_type,
+                f"¢{pricing.spot_price * 100:.2f}",
+                f"¢{pricing.spot_price * 100 / pricing.gpu_count:.2f}",
+                str(pricing.cpu_count),
+                str(pricing.gpu_count),
+            )
+        table.add_section()
     print(table)
 
 

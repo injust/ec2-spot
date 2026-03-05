@@ -6,6 +6,7 @@
 
 import datetime as dt
 from datetime import UTC
+from itertools import groupby
 from typing import TYPE_CHECKING, Self
 
 import anyio
@@ -43,6 +44,10 @@ class Pricing:
     @classmethod
     def from_dict(cls, data: SpotPriceTypeDef) -> Self:
         return cls(zone_id=data["AvailabilityZoneId"], instance_type=data["InstanceType"], spot_price=data["SpotPrice"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
+
+    @property
+    def region_id(self) -> str:
+        return self.zone_id.split("-")[0]
 
     @property
     def instance_size(self) -> str:
@@ -111,14 +116,16 @@ async def main() -> None:
 
     results.sort()  # pyright: ignore[reportPossiblyUnboundVariable]
     table = Table("Availability zone", "Instance type", "¢/hr", "¢/CPU-hr", "CPUs", highlight=True)
-    for pricing in results:  # pyright: ignore[reportPossiblyUnboundVariable]
-        table.add_row(
-            pricing.zone_id,
-            pricing.instance_type,
-            f"¢{pricing.spot_price * 100:.2f}",
-            f"¢{pricing.spot_price * 100 / pricing.cpu_count:.2f}",
-            str(pricing.cpu_count),
-        )
+    for _, group in groupby(results, lambda pricing: pricing.region_id):  # pyright: ignore[reportPossiblyUnboundVariable]
+        for pricing in group:
+            table.add_row(
+                pricing.zone_id,
+                pricing.instance_type,
+                f"¢{pricing.spot_price * 100:.2f}",
+                f"¢{pricing.spot_price * 100 / pricing.cpu_count:.2f}",
+                str(pricing.cpu_count),
+            )
+        table.add_section()
     print(table)
 
 
