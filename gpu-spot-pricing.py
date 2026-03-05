@@ -59,6 +59,28 @@ class Pricing:
         return self.instance_type.split(".")[1]
 
     @property
+    def cpu_count(self) -> int:
+        match self.instance_size:
+            case "xlarge":
+                return 4
+            case "2xlarge":
+                return 8
+            case "4xlarge":
+                return 16
+            case "8xlarge":
+                return 32
+            case "12xlarge":
+                return 48
+            case "16xlarge":
+                return 64
+            case "24xlarge":
+                return 96
+            case "48xlarge":
+                return 192
+            case _:
+                raise ValueError(self.instance_type)
+
+    @property
     def gpu_count(self) -> int:
         match self.instance_size:
             case "xlarge" | "2xlarge" | "4xlarge" | "8xlarge" | "16xlarge":
@@ -118,13 +140,14 @@ async def main() -> None:
                     results.append(pricing)
 
     results.sort()
-    table = Table("Availability zone", "Instance type", "¢/hr", "¢/GPU-hr", "GPUs", highlight=True)
+    table = Table("Availability zone", "Instance type", "¢/hr", "¢/GPU-hr", "CPUs", "GPUs", highlight=True)
     for pricing in results:
         table.add_row(
             pricing.zone_id,
             pricing.instance_type,
             f"¢{pricing.spot_price * 100:.2f}",
             f"¢{pricing.spot_price * 100 / pricing.gpu_count:.2f}",
+            str(pricing.cpu_count),
             str(pricing.gpu_count),
         )
     print(table)
