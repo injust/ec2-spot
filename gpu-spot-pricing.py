@@ -11,6 +11,7 @@ from itertools import groupby
 from typing import TYPE_CHECKING
 
 import anyio
+from aiobotocore.config import AioConfig
 from aiobotocore.session import get_session
 from anyio import create_memory_object_stream, create_task_group
 from attrs import frozen
@@ -63,7 +64,7 @@ class GpuPricing(Pricing):
 async def query_region(region: str, progress: Progress, output: MemoryObjectSendStream[GpuPricing]) -> None:
     task = progress.add_task(region)
 
-    async with aws.create_client("ec2", region) as ec2, output:  # pyright: ignore[reportUnknownMemberType]
+    async with aws.create_client("ec2", region, config=config) as ec2, output:  # pyright: ignore[reportUnknownMemberType]
         try:
             paginator = ec2.get_paginator("describe_spot_price_history")
             async for page in paginator.paginate(
@@ -124,4 +125,5 @@ async def main() -> None:
 
 if __name__ == "__main__":
     aws = get_session()
+    config = AioConfig(connect_timeout=5, retries={"total_max_attempts": 1})
     anyio.run(main, backend_options={"use_uvloop": True})
