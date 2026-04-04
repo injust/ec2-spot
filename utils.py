@@ -1,21 +1,25 @@
 from typing import TYPE_CHECKING, Self
 
 from attrs import field, frozen
+from cattrs import Converter
 
 if TYPE_CHECKING:
     from types_aiobotocore_ec2.literals import InstanceTypeType
     from types_aiobotocore_ec2.type_defs import SpotPriceTypeDef
+else:
+    type InstanceTypeType = str
 
 
 @frozen(order=True)
 class Pricing:
-    zone_id: str
-    instance_type: InstanceTypeType
-    spot_price: float = field(converter=float)
+    zone_id: str = field(alias="AvailabilityZoneId")
+    instance_type: InstanceTypeType = field(alias="InstanceType")
+    spot_price: float = field(alias="SpotPrice")
 
     @classmethod
     def from_dict(cls, data: SpotPriceTypeDef) -> Self:
-        return cls(zone_id=data["AvailabilityZoneId"], instance_type=data["InstanceType"], spot_price=data["SpotPrice"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        converter = Converter(use_alias=True)
+        return converter.structure(data, cls)
 
     @property
     def region_id(self) -> str:

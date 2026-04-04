@@ -1,7 +1,7 @@
 #! /usr/bin/env -S uv run --script
 #
 # /// script
-# dependencies = ["aiobotocore", "anyio", "attrs", "rich", "uvloop"]
+# dependencies = ["aiobotocore", "anyio", "attrs", "cattrs", "rich", "uvloop"]
 # ///
 
 import datetime as dt
